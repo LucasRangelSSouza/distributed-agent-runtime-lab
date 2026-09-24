@@ -1,0 +1,69 @@
+{{- $fullName := include "agent-runtime.fullname" . }}
+{{- $labels := include "agent-runtime.labels" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullName }}-config
+  labels: {{- $labels | nindent 4 }}
+data:
+  REDIS_URL: redis://{{ $fullName }}-redis:6379/0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullName }}-gateway
+  labels: {{- $labels | nindent 4 }}
+spec:
+  replicas: {{ .Values.gateway.replicas }}
+  selector: { matchLabels: { app.kubernetes.io/component: gateway, app.kubernetes.io/instance: {{ .Release.Name }} } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: gateway, app.kubernetes.io/instance: {{ .Release.Name }} }
+    spec:
+      containers:
+        - name: gateway
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef: { name: {{ $fullName }}-config }
+            {{- if .Values.secrets.existingSecret }}
+            - secretRef: { name: {{ .Values.secrets.existingSecret }} }
+            {{- end }}
+          ports: [{ name: http, containerPort: 8080 }]
+          readinessProbe: { httpGet: { path: /healthz, port: http }, initialDelaySeconds: 3, periodSeconds: 3 }
+          livenessProbe: { httpGet: { path: /healthz, port: http }, initialDelaySeconds: 6, periodSeconds: 5 }
+          resources: {{- toYaml .Values.gateway.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullName }}-gateway
+  labels: {{- $labels | nindent 4 }}
+spec:
+  type: {{ .Values.gateway.service.type }}
+  selector: { app.kubernetes.io/component: gateway, app.kubernetes.io/instance: {{ .Release.Name }} }
+  ports: [{ name: http, port: {{ .Values.gateway.service.port }}, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullName }}-worker
+  labels: {{- $labels | nindent 4 }}
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  selector: { matchLabels: { app.kubernetes.io/component: worker, app.kubernetes.io/instance: {{ .Release.Name }} } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: worker, app.kubernetes.io/instance: {{ .Release.Name }} }
+    spec:
+      containers:
+        - name: worker
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: [python, -m, runtime_lab.worker]
+          envFrom:
+            - configMapRef: { name: {{ $fullName }}-config }
+            {{- if .Values.secrets.existingSecret }}
+            - secretRef: { name: {{ .Values.secrets.existingSecret }} }
+            {{- end }}
+          resources: {{- toYaml .Values.worker.resources | nindent 12 }}

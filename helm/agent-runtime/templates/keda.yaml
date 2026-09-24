@@ -1,0 +1,17 @@
+{{- if .Values.autoscaling.keda.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "agent-runtime.fullname" . }}-worker
+spec:
+  scaleTargetRef: { name: {{ include "agent-runtime.fullname" . }}-worker }
+  minReplicaCount: {{ .Values.autoscaling.minReplicas }}
+  maxReplicaCount: {{ .Values.autoscaling.maxReplicas }}
+  triggers:
+    - type: redis-streams
+      metadata:
+        address: {{ include "agent-runtime.fullname" . }}-redis:6379
+        stream: {{ .Values.autoscaling.keda.stream | quote }}
+        consumerGroup: {{ .Values.autoscaling.keda.consumerGroup | quote }}
+        pendingEntriesCount: {{ .Values.autoscaling.keda.pendingEntriesCount | quote }}
+{{- end }}

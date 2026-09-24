@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agent-runtime.fullname" . }}-redis
+  labels: {{- include "agent-runtime.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector: { app.kubernetes.io/component: redis, app.kubernetes.io/instance: {{ .Release.Name }} }
+  ports: [{ name: redis, port: 6379, targetPort: redis }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "agent-runtime.fullname" . }}-redis
+  labels: {{- include "agent-runtime.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "agent-runtime.fullname" . }}-redis
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/component: redis, app.kubernetes.io/instance: {{ .Release.Name }} }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: redis, app.kubernetes.io/instance: {{ .Release.Name }} }
+    spec:
+      containers:
+        - name: redis
+          image: {{ .Values.redis.image }}
+          ports: [{ name: redis, containerPort: 6379 }]
+          readinessProbe: { exec: { command: [redis-cli, ping] }, initialDelaySeconds: 2, periodSeconds: 3 }
+          livenessProbe: { exec: { command: [redis-cli, ping] }, initialDelaySeconds: 6, periodSeconds: 5 }
+          resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 250m, memory: 256Mi } }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: {{ .Values.redis.storage }} } }

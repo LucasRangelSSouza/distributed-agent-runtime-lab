@@ -74,6 +74,13 @@ The Docker Compose file provides a Redis service and a runtime container contrac
 
 Docker Compose passed locally on 2026-09-24. A worker interruption and pending-entry reclaim also passed in the Compose profile on that date. `k8s/local-kind.yaml` supplies a two-worker `kind` blueprint with Redis, probes, and resource limits; schema validation passed for all six resources. The local control-plane failed during its bootstrap on this host, so the project has no cluster execution evidence and makes no claim about an active cloud cluster. A cloud exercise requires a reviewed AWS or GCP plan, an immutable image digest, secret delivery outside Git, and a multi-worker resilience run in the selected environment.
 
+The Helm chart at `helm/agent-runtime` separates gateway, worker, and Redis workloads. It includes probes, resource limits, a worker disruption budget, a restrictive demonstration NetworkPolicy, a CPU-based HPA, and an optional Redis Streams KEDA trigger. KEDA stays disabled by default because its CRD and operator are not part of a fresh Kubernetes cluster. Supply an existing Secret name only through `secrets.existingSecret`; the chart never generates credentials.
+
+```powershell
+docker run --rm -v "${PWD}:/work:ro" alpine/helm:3.16.4 lint /work/helm/agent-runtime
+docker run --rm -v "${PWD}:/work:ro" alpine/helm:3.16.4 template runtime-lab /work/helm/agent-runtime
+```
+
 ## Article draft
 
 [Idempotency before autoscaling an agent runtime](articles/idempotency-before-autoscaling.md) and its [claim-to-evidence map](articles/claim-map.md) are Markdown drafts for later manual publication.
