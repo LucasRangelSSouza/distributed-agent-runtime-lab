@@ -28,3 +28,7 @@ The Docker Compose file provides a Redis service and a runtime container contrac
 ## Operational boundary
 
 Docker Desktop and a Kubernetes context are not running on this host at the current validation time, so container and cluster execution remain unverified. The repository does not claim an active cloud cluster. Before a cloud deployment, validate infrastructure modules in the target AWS or GCP account, pin the image digest, configure secret delivery outside Git, and run a multi-worker resilience test.
+
+## Article draft
+
+[Idempotency before autoscaling an agent runtime](articles/idempotency-before-autoscaling.md) and its [claim-to-evidence map](articles/claim-map.md) are Markdown drafts for later manual publication.
