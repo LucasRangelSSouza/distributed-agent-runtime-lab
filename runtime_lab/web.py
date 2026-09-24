@@ -7,6 +7,7 @@ run the walkthrough before choosing a web framework or a model provider.
 from __future__ import annotations
 
 import json
+import os
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from mimetypes import guess_type
@@ -15,16 +16,25 @@ from urllib.parse import urlparse
 from uuid import uuid4
 
 from runtime_lab.runtime import Runtime
+from runtime_lab.redis_state import RedisState
 
 
 STATIC_ROOT = Path(__file__).with_name("static")
 RUNTIME = Runtime()
 WORKERS = ["worker-amber", "worker-slate"]
 MAX_MESSAGE_LENGTH = 2_000
+REDIS_STATE = RedisState.from_url(os.environ["REDIS_URL"]) if os.environ.get("REDIS_URL") else None
 
 
 def execute(request_id: str, message: str, conversation_id: str | None = None) -> dict[str, object]:
     """Run an intentionally deterministic worker and return safe UI fields."""
+    if REDIS_STATE:
+        redis_state, created = REDIS_STATE.submit(request_id, conversation_id or request_id)
+        if not created:
+            return {**redis_state, "cache_hit": redis_state["status"] == "completed"}
+        state = RUNTIME.process(request_id, WORKERS, lambda _: f"Worker received: {message.strip()}", conversation_id=conversation_id)
+        redis_state = REDIS_STATE.complete(request_id, state.worker_id or "unassigned", state.response or "", state.attempts)
+        return {**redis_state, "cache_hit": False}
     was_completed = request_id in RUNTIME.requests and RUNTIME.requests[request_id].status == "completed"
     state = RUNTIME.process(request_id, WORKERS, lambda _: f"Worker received: {message.strip()}", conversation_id=conversation_id)
     return {
@@ -44,7 +54,7 @@ class RuntimeHandler(BaseHTTPRequestHandler):
         if path in {"/", "/index.html"}:
             self._send_file("index.html", "text/html; charset=utf-8")
         elif path == "/healthz":
-            self._send_json(HTTPStatus.OK, {"status": "ok", "workers": WORKERS})
+            self._send_json(HTTPStatus.OK, {"status": "ok", "workers": WORKERS, "state_backend": "redis" if REDIS_STATE else "in_memory"})
         elif path.startswith("/assets/"):
             asset = path.removeprefix("/")
             content_type = guess_type(asset)[0] or "application/octet-stream"

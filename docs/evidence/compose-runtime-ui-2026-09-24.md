@@ -2,14 +2,14 @@
 
 ## Context
 
-On 2026-09-24, Docker Desktop 26.1.1 ran the local Compose profile. The profile built the Python runtime image and its React frontend stage, started Redis 7, and served the test chat on `http://localhost:8080`.
+On 2026-09-24, Docker Desktop 26.1.1 ran the local Compose profile, which built the Python runtime image and its React frontend stage, started Redis 7, and served the test chat on `http://localhost:8080`.
 
 ## Observed behavior
 
-The health endpoint returned `ok`, while `redis-cli` returned `PONG`. The rendered React chat showed a generated conversation ID, connected runtime state, request status, worker assignment, attempt count, and replay status.
+The health endpoint returned `ok`, while `redis-cli` returned `PONG`. The rendered React chat showed a generated conversation ID, connected runtime state, request status, worker assignment, attempt count, and replay status. The browser interaction then exercised the same containerized API that the test chat exposes to a reader.
 
-The test chat accepted a message under a generated request ID. A second message used that ID, received the original response, kept attempt count `1`, and displayed replay state through the delivered container UI.
+The test chat accepted a message under a generated request ID. A second message used that ID, received the original response, kept attempt count `1`, and displayed replay state through the delivered container UI. After recreating the runtime container, another request with the same ID reported `state_backend: redis` and returned that same completed result.
 
 ## Scope limit
 
-Redis ran as a healthy Compose service during the test, but the current runtime has not moved idempotency or conversation checkpoints into Redis. This evidence does not claim queue dispatch, Redis Streams consumer recovery, Kubernetes replica failover, or cloud deployment.
+Redis held completed-request and conversation-checkpoint state during the Compose test. This evidence does not claim queue dispatch, Redis Streams consumer recovery, Kubernetes replica failover, or cloud deployment.

@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from runtime_lab.runtime import Runtime
 from runtime_lab import web
+from runtime_lab.redis_state import RedisState
 
 
 class RuntimeTests(unittest.TestCase):
@@ -57,6 +58,24 @@ class RuntimeTests(unittest.TestCase):
         runtime.process("first", ["worker-a"], lambda _: "first answer", conversation_id="conversation")
         runtime.process("second", ["worker-b"], lambda _: "second answer", conversation_id="conversation")
         self.assertEqual(runtime.conversations["conversation"], ["first answer", "second answer"])
+
+    def test_redis_state_returns_a_completed_duplicate(self):
+        class FakeRedis:
+            def __init__(self): self.values = {}; self.lists = {}
+            def set(self, key, value, nx=False):
+                if nx and key in self.values: return False
+                self.values[key] = value; return True
+            def get(self, key): return self.values.get(key)
+            def rpush(self, key, value): self.lists.setdefault(key, []).append(value)
+
+        store = RedisState(FakeRedis())
+        state, created = store.submit("request", "conversation")
+        self.assertTrue(created)
+        self.assertEqual(state["status"], "queued")
+        store.complete("request", "worker-a", "answer", 1)
+        duplicate, created = store.submit("request", "conversation")
+        self.assertFalse(created)
+        self.assertEqual(duplicate["response"], "answer")
 
 
 if __name__ == "__main__":

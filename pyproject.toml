@@ -2,6 +2,7 @@
 name = "distributed-agent-runtime-lab"
 version = "0.1.0"
 requires-python = ">=3.10"
+dependencies = ["redis>=5,<7"]
 
 [tool.setuptools.packages.find]
 include = ["runtime_lab*"]

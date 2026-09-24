@@ -6,8 +6,7 @@ A local-first reference for an idempotent agent runtime. It ships a React test c
 flowchart LR
     C[Client request ID] --> L[Load balancer]
     L --> W[Deterministic worker]
-    W --> S[In-process state in current demo]
-    R[(Redis service)] -. deployment dependency .-> W
+    W <--> R[(Redis request and conversation state)]
     W --> A[Agent runtime]
     A --> C
 ```
@@ -41,7 +40,7 @@ python -m runtime_lab.web
 
 Run `npm --prefix frontend run dev` in a second terminal to iterate on the React, TypeScript, Tailwind, and shadcn-style interface. Vite proxies API requests to the Python service on port 8080. The Compose image builds the same frontend bundle in a Node stage and serves it from the Python service.
 
-The present runtime keeps idempotency and conversation state in process. Redis is live in the Compose profile but does not yet own that state, queue dispatch, or consumer recovery. This boundary is intentional and explicit: the completed Docker proof demonstrates packaging and UI delivery, not Redis-backed distributed execution.
+The standalone Python command keeps state in process. Docker Compose sets `REDIS_URL`, so Redis owns request completion and conversation checkpoints in that profile. A local restart proof confirms that a recreated runtime container returns the original completed result from Redis. The implementation does not yet provide Redis Streams dispatch, consumer groups, worker recovery, or multi-replica queue scheduling.
 
 The Docker Compose file provides a Redis service and a runtime container contract. The Kubernetes manifest starts two worker replicas. The GKE Terraform configuration provisions a regional cluster and worker pool; a deployer supplies credentials, project ID, networking review, and immutable image tag. Read [the GKE deployment contract](docs/gke-deployment.md) before planning cloud resources.
 
