@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Runtime Lab</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="intro">
+        <p class="eyebrow">LOCAL RUNTIME DEMO</p>
+        <h1>Make distributed behavior inspectable.</h1>
+        <p class="lede">Send a request, retain its ID, and replay it to observe idempotency without a hidden state change.</p>
+        <div class="stat-row" aria-label="Runtime properties">
+          <span>Two workers</span><span>Deterministic routing</span><span>Replay-safe IDs</span>
+        </div>
+      </section>
+      <section class="console" aria-label="Runtime console">
+        <header class="console-head"><div><p class="eyebrow">REQUEST CONSOLE</p><h2>Conversation</h2></div><span id="connection" class="status">Checking runtime</span></header>
+        <div id="messages" class="messages" aria-live="polite">
+          <article class="message system">Use a message and keep the generated request ID to test a safe replay.</article>
+        </div>
+        <form id="message-form" class="composer">
+          <label for="message">Message</label>
+          <textarea id="message" rows="3" placeholder="Ask the worker to process a short request" required></textarea>
+          <div class="composer-footer"><label class="request-label" for="request-id">Request ID <input id="request-id" autocomplete="off" placeholder="Generated on first send" /></label><button type="submit">Send to runtime</button></div>
+        </form>
+      </section>
+      <aside class="trace" aria-label="Latest request trace"><p class="eyebrow">LATEST TRACE</p><dl><div><dt>Status</dt><dd id="trace-status">Awaiting request</dd></div><div><dt>Worker</dt><dd id="trace-worker">—</dd></div><div><dt>Attempts</dt><dd id="trace-attempts">—</dd></div><div><dt>Replay</dt><dd id="trace-cache">—</dd></div></dl><p class="boundary">This screen runs the local in-process demo. Redis and Kubernetes remain separately verifiable deployment contracts.</p></aside>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

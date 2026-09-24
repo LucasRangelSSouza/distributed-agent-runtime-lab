@@ -23,6 +23,21 @@ terraform -chdir=infra\terraform validate
 kubectl apply --dry-run=client --validate=false -f k8s\runtime.yaml
 ```
 
+## Local conversation demo
+
+Run the standard-library web surface, then open `http://localhost:8080`.
+
+```powershell
+python -m runtime_lab.web
+```
+
+The screen makes the request ID explicit: send once, then send another message
+with the same ID. The runtime returns the completed response without invoking a
+second handler. Its trace panel exposes the selected worker, attempt count, and
+whether completed state returned the response. This is deliberately a
+local in-process demonstration, not a claim that Redis is already supplying
+shared production state.
+
 The Docker Compose file provides a Redis service and a runtime container contract. The Kubernetes manifest starts two worker replicas. The GKE Terraform configuration provisions a regional cluster and worker pool; a deployer supplies credentials, project ID, networking review, and immutable image tag. Read [the GKE deployment contract](docs/gke-deployment.md) before planning cloud resources.
 
 ## Operational boundary

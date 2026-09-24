@@ -1,6 +1,7 @@
 import unittest
 
 from runtime_lab.runtime import Runtime
+from runtime_lab import web
 
 
 class RuntimeTests(unittest.TestCase):
@@ -22,6 +23,18 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(state.status, "queued")
         self.assertEqual(runtime.process("r", ["worker-b"], lambda _: "recovered").response, "recovered")
         self.assertEqual(runtime.requests["r"].attempts, 2)
+
+    def test_web_execution_replays_a_completed_request(self):
+        original_runtime = web.RUNTIME
+        web.RUNTIME = Runtime()
+        try:
+            first = web.execute("browser-request", "first message")
+            replay = web.execute("browser-request", "second message")
+        finally:
+            web.RUNTIME = original_runtime
+        self.assertFalse(first["cache_hit"])
+        self.assertTrue(replay["cache_hit"])
+        self.assertEqual(replay["response"], "Worker received: first message")
 
 
 if __name__ == "__main__":
