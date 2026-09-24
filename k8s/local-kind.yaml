@@ -23,12 +23,12 @@ spec:
 ---
 apiVersion: apps/v1
 kind: Deployment
-metadata: { name: agent-runtime }
+metadata: { name: agent-gateway }
 spec:
-  replicas: 2
+  replicas: 1
   selector: { matchLabels: { app: agent-runtime } }
   template:
-    metadata: { labels: { app: agent-runtime } }
+    metadata: { labels: { app: agent-runtime, runtime_role: gateway } }
     spec:
       containers:
         - name: runtime
@@ -48,3 +48,22 @@ metadata: { name: agent-runtime }
 spec:
   selector: { app: agent-runtime }
   ports: [{ port: 8080, targetPort: 8080 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: agent-workers }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: agent-worker } }
+  template:
+    metadata: { labels: { app: agent-worker, runtime_role: worker } }
+    spec:
+      containers:
+        - name: worker
+          image: distributed-agent-runtime-lab-runtime:latest
+          imagePullPolicy: Never
+          command: ["python", "-m", "runtime_lab.worker"]
+          env: [{ name: REDIS_URL, value: redis://runtime-redis:6379/0 }]
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }
