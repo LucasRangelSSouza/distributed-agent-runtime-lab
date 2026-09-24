@@ -21,9 +21,9 @@ flowchart LR
 The deterministic runtime tests cover completed-request replay, least-load selection, failure requeue, concurrent duplicate suppression, a conversation checkpoint, and one Redis Streams worker cycle. The React interface exposes request and conversation IDs, worker assignment, attempts, and replay state. The Compose profile starts the interface, Redis, and two stream consumers without a cloud account.
 
 ```powershell
-python -m unittest discover -s tests -v
+python -m pip install -e .
 npm --prefix frontend ci
-npm --prefix frontend run build
+make check
 docker compose up --build --detach
 ```
 
