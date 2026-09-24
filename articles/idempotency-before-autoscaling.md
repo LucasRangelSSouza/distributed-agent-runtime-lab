@@ -1,5 +1,7 @@
 # Idempotency before autoscaling an agent runtime
 
+**Versioned reference:** [v0.1.0](https://github.com/LucasRangelSSouza/distributed-agent-runtime-lab/tree/v0.1.0)
+
 Adding replicas does not make an agent runtime safe by itself. A retried client request can reach a different worker, a worker can fail after claiming work, and an upstream timeout can cause the client to submit the same request again. The runtime needs a state contract before it needs a scaling rule.
 
 This reference models a request as queued, processing, or completed. The first completed response becomes the response for later submissions with the same request ID. The test runs a completed request through a second worker and confirms that it returns the original answer without another handler attempt.
