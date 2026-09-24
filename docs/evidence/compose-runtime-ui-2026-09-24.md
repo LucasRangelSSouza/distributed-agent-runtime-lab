@@ -12,6 +12,8 @@ The test chat accepted a message under a generated request ID. A second message 
 
 The Compose profile was then recreated with two `worker` containers. A request posted to the gateway completed through `runtime-lab:agent-runs`; replaying that request preserved the same worker ID and attempt count `1`. Redis reported the `agent-workers` consumer group with two consumers, no pending entries, and no lag after the run.
 
+For a recovery exercise, the operator set one worker to use a three-second deterministic processing delay. The gateway accepted a request. Redis then reported one pending stream entry. The operator terminated that worker before it could acknowledge the entry. A replacement worker reclaimed the idle entry and completed it with attempt count `1`; Redis subsequently reported zero pending entries. The operator restored the normal two-worker profile after the exercise. Redis retains consumer identity history, so its later consumer count includes stopped containers; `docker compose ps` is the source for the active worker count.
+
 ## Scope limit
 
-Redis held completed-request and conversation-checkpoint state during the Compose test. This evidence demonstrates one successful Redis Streams dispatch and acknowledgement. It does not claim worker-crash recovery, Kubernetes replica failover, throughput capacity, or cloud deployment.
+Redis held completed-request and conversation-checkpoint state during the Compose test. This evidence demonstrates a successful Redis Streams dispatch, acknowledgement, and one pending-entry reclaim after a local worker interruption. It does not claim Kubernetes replica failover, throughput capacity, or cloud deployment.

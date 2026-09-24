@@ -113,6 +113,27 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue(StreamWorker(store, "worker-a").process_once(0))
         self.assertEqual(store.get_request("request")["response"], "Worker received: queued work")
 
+    def test_stream_worker_reclaims_a_pending_request(self):
+        class FakeRedis:
+            def __init__(self): self.values = {}; self.lists = {}; self.acked = []
+            def set(self, key, value, nx=False):
+                if nx and key in self.values: return False
+                self.values[key] = value; return True
+            def get(self, key): return self.values.get(key)
+            def rpush(self, key, value): self.lists.setdefault(key, []).append(value)
+            def lrange(self, key, _start, _stop): return self.lists.get(key, [])
+            def xgroup_create(self, *_args, **_kwargs): return True
+            def xautoclaim(self, stream, _group, _consumer, _idle, _start, **_kwargs):
+                return ("0-0", [("1-0", {"request_id": "request", "message": "recovered work"})], [])
+            def xack(self, stream, group, entry_id): self.acked.append((stream, group, entry_id))
+
+        store = RedisState(FakeRedis())
+        store.submit("request", "conversation")
+        self.assertTrue(StreamWorker(store, "worker-b").recover_once(0))
+        recovered = store.get_request("request")
+        self.assertEqual(recovered["worker_id"], "worker-b")
+        self.assertEqual(recovered["attempts"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
