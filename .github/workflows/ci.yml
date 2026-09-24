@@ -36,6 +36,9 @@ jobs:
       - run: terraform -chdir=infra/terraform/gcp-multicluster init -backend=false
       - run: terraform -chdir=infra/terraform/gcp-multicluster fmt -check
       - run: terraform -chdir=infra/terraform/gcp-multicluster validate
+      - run: terraform -chdir=infra/terraform/aws-multicluster init -backend=false
+      - run: terraform -chdir=infra/terraform/aws-multicluster fmt -check
+      - run: terraform -chdir=infra/terraform/aws-multicluster validate
       - name: Reject public-context and credential markers
         run: |
           ! rg -n -i "mindlab|mente inovadora|mi-prd|bigquery|kaggle.{0,40}(token|api|username)|ghp_|AKIA" \
