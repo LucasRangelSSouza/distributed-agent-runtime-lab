@@ -1,26 +1,34 @@
 # Distributed agent runtime lab
 
-A local-first reference for an idempotent agent runtime. Requests enter through a load-balanced service, workers claim work, Redis holds shared state in a deployment, and a completed request returns the same response for repeated request IDs.
+A local-first reference for an idempotent agent runtime. It ships a React test chat, a deterministic runtime, and a Compose profile with Redis. Repeated request IDs return the first completed result.
 
 ```mermaid
 flowchart LR
     C[Client request ID] --> L[Load balancer]
-    L --> W[Available worker]
-    W <--> R[Redis state and idempotency]
+    L --> W[Deterministic worker]
+    W --> S[In-process state in current demo]
+    R[(Redis service)] -. deployment dependency .-> W
     W --> A[Agent runtime]
     A --> C
 ```
 
-## Verified local behavior
+## What the current proof covers
 
-The deterministic runtime tests prove three state transitions: a repeated completed request returns its original response; a new request selects the least-loaded worker; and a failed worker attempt requeues the request so a later worker can complete it.
+The deterministic runtime tests cover completed-request replay, least-load selection, failure requeue, concurrent duplicate suppression, and a conversation checkpoint. The React interface exposes request and conversation IDs, worker assignment, attempts, and replay state. The Compose profile starts the interface and Redis without a cloud account.
 
 ```powershell
 python -m unittest discover -s tests -v
-docker compose config
-terraform -chdir=infra\terraform fmt -check
-terraform -chdir=infra\terraform validate
-kubectl apply --dry-run=client --validate=false -f k8s\runtime.yaml
+npm --prefix frontend ci
+npm --prefix frontend run build
+docker compose up --build --detach
+```
+
+Open `http://localhost:8080`. Submit a message, retain the generated request ID, then submit a different message with that same ID. The interface returns the first completed response and marks it as a replay. The [dated Compose evidence](docs/evidence/compose-runtime-ui-2026-09-24.md) records the successful local run.
+
+Stop the local profile when finished:
+
+```powershell
+docker compose down
 ```
 
 ## Local conversation demo
@@ -31,18 +39,15 @@ Run the standard-library web surface, then open `http://localhost:8080`.
 python -m runtime_lab.web
 ```
 
-The screen makes the request ID explicit: send once, then send another message
-with the same ID. The runtime returns the completed response without invoking a
-second handler. Its trace panel exposes the selected worker, attempt count, and
-whether completed state returned the response. This is deliberately a
-local in-process demonstration, not a claim that Redis is already supplying
-shared production state.
+Run `npm --prefix frontend run dev` in a second terminal to iterate on the React, TypeScript, Tailwind, and shadcn-style interface. Vite proxies API requests to the Python service on port 8080. The Compose image builds the same frontend bundle in a Node stage and serves it from the Python service.
+
+The present runtime keeps idempotency and conversation state in process. Redis is live in the Compose profile but does not yet own that state, queue dispatch, or consumer recovery. This boundary is intentional and explicit: the completed Docker proof demonstrates packaging and UI delivery, not Redis-backed distributed execution.
 
 The Docker Compose file provides a Redis service and a runtime container contract. The Kubernetes manifest starts two worker replicas. The GKE Terraform configuration provisions a regional cluster and worker pool; a deployer supplies credentials, project ID, networking review, and immutable image tag. Read [the GKE deployment contract](docs/gke-deployment.md) before planning cloud resources.
 
-## Operational boundary
+## Cloud and Kubernetes boundary
 
-Docker Desktop and a Kubernetes context are not running on this host at the current validation time, so container and cluster execution remain unverified. The repository does not claim an active cloud cluster. Before a cloud deployment, validate infrastructure modules in the target AWS or GCP account, pin the image digest, configure secret delivery outside Git, and run a multi-worker resilience test.
+Docker Compose passed locally on 2026-09-24. This workspace has no Kubernetes context or cloud account, so the project has no cluster evidence and makes no claim about an active cloud cluster. A cloud exercise requires a reviewed AWS or GCP plan, an immutable image digest, secret delivery outside Git, and a multi-worker resilience run in the selected environment.
 
 ## Article draft
 

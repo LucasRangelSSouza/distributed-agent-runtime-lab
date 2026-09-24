@@ -52,6 +52,12 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue(all(state.response == "answer" for state in states))
         self.assertEqual(runtime.requests["same"].attempts, 1)
 
+    def test_conversation_checkpoint_survives_worker_change(self):
+        runtime = Runtime()
+        runtime.process("first", ["worker-a"], lambda _: "first answer", conversation_id="conversation")
+        runtime.process("second", ["worker-b"], lambda _: "second answer", conversation_id="conversation")
+        self.assertEqual(runtime.conversations["conversation"], ["first answer", "second answer"])
+
 
 if __name__ == "__main__":
     unittest.main()

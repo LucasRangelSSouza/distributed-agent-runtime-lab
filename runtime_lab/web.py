@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from mimetypes import guess_type
 from pathlib import Path
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -22,12 +23,13 @@ WORKERS = ["worker-amber", "worker-slate"]
 MAX_MESSAGE_LENGTH = 2_000
 
 
-def execute(request_id: str, message: str) -> dict[str, object]:
+def execute(request_id: str, message: str, conversation_id: str | None = None) -> dict[str, object]:
     """Run an intentionally deterministic worker and return safe UI fields."""
     was_completed = request_id in RUNTIME.requests and RUNTIME.requests[request_id].status == "completed"
-    state = RUNTIME.process(request_id, WORKERS, lambda _: f"Worker received: {message.strip()}")
+    state = RUNTIME.process(request_id, WORKERS, lambda _: f"Worker received: {message.strip()}", conversation_id=conversation_id)
     return {
         "request_id": state.request_id,
+        "conversation_id": state.conversation_id,
         "status": state.status,
         "worker_id": state.worker_id,
         "response": state.response,
@@ -41,12 +43,12 @@ class RuntimeHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path in {"/", "/index.html"}:
             self._send_file("index.html", "text/html; charset=utf-8")
-        elif path == "/app.js":
-            self._send_file("app.js", "application/javascript; charset=utf-8")
-        elif path == "/styles.css":
-            self._send_file("styles.css", "text/css; charset=utf-8")
         elif path == "/healthz":
             self._send_json(HTTPStatus.OK, {"status": "ok", "workers": WORKERS})
+        elif path.startswith("/assets/"):
+            asset = path.removeprefix("/")
+            content_type = guess_type(asset)[0] or "application/octet-stream"
+            self._send_file(asset, f"{content_type}; charset=utf-8")
         else:
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
@@ -59,15 +61,20 @@ class RuntimeHandler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length))
             message = str(payload.get("message", "")).strip()
             request_id = str(payload.get("request_id") or uuid4())
+            conversation_id = str(payload.get("conversation_id") or uuid4())
             if not message or len(message) > MAX_MESSAGE_LENGTH:
                 raise ValueError("message must contain 1 to 2000 characters")
         except (ValueError, json.JSONDecodeError):
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": "message must contain 1 to 2000 characters"})
             return
-        self._send_json(HTTPStatus.OK, execute(request_id, message))
+        self._send_json(HTTPStatus.OK, execute(request_id, message, conversation_id))
 
     def _send_file(self, name: str, content_type: str) -> None:
-        body = (STATIC_ROOT / name).read_bytes()
+        target = (STATIC_ROOT / name).resolve()
+        if STATIC_ROOT.resolve() not in target.parents or not target.is_file():
+            self._send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+            return
+        body = target.read_bytes()
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
