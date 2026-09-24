@@ -5,15 +5,20 @@ A local-first reference for an idempotent agent runtime. It ships a React test c
 ```mermaid
 flowchart LR
     C[Client request ID] --> L[Load balancer]
-    L --> W[Deterministic worker]
-    W <--> R[(Redis request and conversation state)]
-    W --> A[Agent runtime]
+    L --> G[Gateway]
+    G --> S[(Redis Stream)]
+    S --> W1[Worker 1]
+    S --> W2[Worker 2]
+    W1 <--> R[(Redis request and conversation state)]
+    W2 <--> R
+    W1 --> A[Agent runtime]
+    W2 --> A
     A --> C
 ```
 
 ## What the current proof covers
 
-The deterministic runtime tests cover completed-request replay, least-load selection, failure requeue, concurrent duplicate suppression, and a conversation checkpoint. The React interface exposes request and conversation IDs, worker assignment, attempts, and replay state. The Compose profile starts the interface and Redis without a cloud account.
+The deterministic runtime tests cover completed-request replay, least-load selection, failure requeue, concurrent duplicate suppression, a conversation checkpoint, and one Redis Streams worker cycle. The React interface exposes request and conversation IDs, worker assignment, attempts, and replay state. The Compose profile starts the interface, Redis, and two stream consumers without a cloud account.
 
 ```powershell
 python -m unittest discover -s tests -v
@@ -42,7 +47,9 @@ python -m runtime_lab.web
 
 Run `npm --prefix frontend run dev` in a second terminal to iterate on the React, TypeScript, Tailwind, and shadcn-style interface. Vite proxies API requests to the Python service on port 8080. The Compose image builds the same frontend bundle in a Node stage and serves it from the Python service.
 
-The standalone Python command keeps state in process. Docker Compose sets `REDIS_URL`, so Redis owns request completion and conversation checkpoints in that profile. A local restart proof confirms that a recreated runtime container returns the original completed result from Redis. The implementation does not yet provide Redis Streams dispatch, consumer groups, worker recovery, or multi-replica queue scheduling.
+The standalone Python command keeps state in process. Docker Compose sets `REDIS_URL`, so Redis owns request completion and conversation checkpoints in that profile. The gateway atomically creates a request state record, enqueues it in `runtime-lab:agent-runs`, and polls briefly for a stream worker result. The `agent-workers` consumer group acknowledges an entry only after its completed state is saved. A duplicate request ID returns the persisted result rather than enqueueing a second run.
+
+A local Compose proof started two worker containers, processed a stream entry with one worker, showed two consumers in the group, and confirmed zero pending messages. That is a functional dispatch proof, not a worker-crash recovery or throughput benchmark.
 
 The Docker Compose file provides a Redis service and a runtime container contract. The Kubernetes manifest starts two worker replicas. The GKE Terraform configuration provisions a regional cluster and worker pool; a deployer supplies credentials, project ID, networking review, and immutable image tag. Read [the GKE deployment contract](docs/gke-deployment.md) before planning cloud resources.
 

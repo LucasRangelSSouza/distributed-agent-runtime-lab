@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from runtime_lab.runtime import Runtime
 from runtime_lab import web
 from runtime_lab.redis_state import RedisState
+from runtime_lab.worker import StreamWorker
 
 
 class RuntimeTests(unittest.TestCase):
@@ -90,6 +91,27 @@ class RuntimeTests(unittest.TestCase):
             web.RUNTIME, web.REDIS_STATE = original_runtime, original_store
         self.assertEqual(request["status"], "completed")
         self.assertEqual(conversation["responses"], ["Worker received: message"])
+
+    def test_stream_worker_completes_one_queued_request(self):
+        class FakeRedis:
+            def __init__(self): self.values = {}; self.lists = {}; self.entries = []; self.acked = []
+            def set(self, key, value, nx=False):
+                if nx and key in self.values: return False
+                self.values[key] = value; return True
+            def get(self, key): return self.values.get(key)
+            def rpush(self, key, value): self.lists.setdefault(key, []).append(value)
+            def lrange(self, key, _start, _stop): return self.lists.get(key, [])
+            def xadd(self, stream, fields): self.entries.append((stream, "1-0", fields)); return "1-0"
+            def xgroup_create(self, *_args, **_kwargs): return True
+            def xreadgroup(self, _group, _consumer, _streams, **_kwargs):
+                return [(self.entries[0][0], [(self.entries[0][1], self.entries[0][2])])] if self.entries else []
+            def xack(self, stream, group, entry_id): self.acked.append((stream, group, entry_id))
+
+        store = RedisState(FakeRedis())
+        store.submit("request", "conversation")
+        store.enqueue("request", "conversation", "queued work")
+        self.assertTrue(StreamWorker(store, "worker-a").process_once(0))
+        self.assertEqual(store.get_request("request")["response"], "Worker received: queued work")
 
 
 if __name__ == "__main__":

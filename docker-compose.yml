@@ -20,3 +20,13 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+  worker:
+    build: .
+    command: ["python", "-m", "runtime_lab.worker"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    deploy:
+      replicas: 2

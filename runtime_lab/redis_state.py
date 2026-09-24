@@ -34,6 +34,19 @@ class RedisState:
         self.client.rpush(self._conversation_key(state["conversation_id"]), response)
         return state
 
+    def enqueue(self, request_id: str, conversation_id: str, message: str) -> str:
+        return str(self.client.xadd(self._stream_key(), {"request_id": request_id, "conversation_id": conversation_id, "message": message}))
+
+    def ensure_consumer_group(self, group: str) -> None:
+        try:
+            self.client.xgroup_create(self._stream_key(), group, id="0-0", mkstream=True)
+        except Exception as error:
+            if "BUSYGROUP" not in str(error):
+                raise
+
+    def _stream_key(self) -> str:
+        return f"{self.prefix}:agent-runs"
+
     def get_request(self, request_id: str) -> dict[str, Any]:
         payload = self.client.get(self._request_key(request_id))
         if payload is None:

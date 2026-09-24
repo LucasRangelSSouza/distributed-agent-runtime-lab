@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from mimetypes import guess_type
@@ -32,9 +33,14 @@ def execute(request_id: str, message: str, conversation_id: str | None = None) -
         redis_state, created = REDIS_STATE.submit(request_id, conversation_id or request_id)
         if not created:
             return {**redis_state, "cache_hit": redis_state["status"] == "completed"}
-        state = RUNTIME.process(request_id, WORKERS, lambda _: f"Worker received: {message.strip()}", conversation_id=conversation_id)
-        redis_state = REDIS_STATE.complete(request_id, state.worker_id or "unassigned", state.response or "", state.attempts)
-        return {**redis_state, "cache_hit": False}
+        REDIS_STATE.enqueue(request_id, conversation_id or request_id, message)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            redis_state = REDIS_STATE.get_request(request_id)
+            if redis_state["status"] == "completed":
+                return {**redis_state, "cache_hit": False}
+            time.sleep(0.05)
+        return {**REDIS_STATE.get_request(request_id), "cache_hit": False}
     was_completed = request_id in RUNTIME.requests and RUNTIME.requests[request_id].status == "completed"
     state = RUNTIME.process(request_id, WORKERS, lambda _: f"Worker received: {message.strip()}", conversation_id=conversation_id)
     return {
