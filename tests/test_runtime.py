@@ -67,6 +67,7 @@ class RuntimeTests(unittest.TestCase):
                 self.values[key] = value; return True
             def get(self, key): return self.values.get(key)
             def rpush(self, key, value): self.lists.setdefault(key, []).append(value)
+            def lrange(self, key, _start, _stop): return self.lists.get(key, [])
 
         store = RedisState(FakeRedis())
         state, created = store.submit("request", "conversation")
@@ -76,6 +77,19 @@ class RuntimeTests(unittest.TestCase):
         duplicate, created = store.submit("request", "conversation")
         self.assertFalse(created)
         self.assertEqual(duplicate["response"], "answer")
+        self.assertEqual(store.get_conversation("conversation"), ["answer"])
+
+    def test_in_memory_inspection_exposes_request_and_conversation(self):
+        original_runtime, original_store = web.RUNTIME, web.REDIS_STATE
+        web.RUNTIME, web.REDIS_STATE = Runtime(), None
+        try:
+            web.execute("request", "message", "conversation")
+            request = web.inspect_request("request")
+            conversation = web.inspect_conversation("conversation")
+        finally:
+            web.RUNTIME, web.REDIS_STATE = original_runtime, original_store
+        self.assertEqual(request["status"], "completed")
+        self.assertEqual(conversation["responses"], ["Worker received: message"])
 
 
 if __name__ == "__main__":

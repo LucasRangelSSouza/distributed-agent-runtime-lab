@@ -40,6 +40,9 @@ class RedisState:
             raise KeyError(request_id)
         return json.loads(payload)
 
+    def get_conversation(self, conversation_id: str) -> list[str]:
+        return list(self.client.lrange(self._conversation_key(conversation_id), 0, -1))
+
     def _request_key(self, request_id: str) -> str:
         return f"{self.prefix}:request:{request_id}"
 

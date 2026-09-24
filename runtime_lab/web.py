@@ -48,6 +48,18 @@ def execute(request_id: str, message: str, conversation_id: str | None = None) -
     }
 
 
+def inspect_request(request_id: str) -> dict[str, object]:
+    if REDIS_STATE:
+        return REDIS_STATE.get_request(request_id)
+    state = RUNTIME.requests[request_id]
+    return {"request_id": state.request_id, "conversation_id": state.conversation_id, "status": state.status, "worker_id": state.worker_id, "response": state.response, "attempts": state.attempts}
+
+
+def inspect_conversation(conversation_id: str) -> dict[str, object]:
+    messages = REDIS_STATE.get_conversation(conversation_id) if REDIS_STATE else RUNTIME.conversations.get(conversation_id, [])
+    return {"conversation_id": conversation_id, "responses": messages}
+
+
 class RuntimeHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 - required stdlib method name
         path = urlparse(self.path).path
@@ -55,6 +67,10 @@ class RuntimeHandler(BaseHTTPRequestHandler):
             self._send_file("index.html", "text/html; charset=utf-8")
         elif path == "/healthz":
             self._send_json(HTTPStatus.OK, {"status": "ok", "workers": WORKERS, "state_backend": "redis" if REDIS_STATE else "in_memory"})
+        elif path.startswith("/api/requests/"):
+            self._inspect(lambda: inspect_request(path.removeprefix("/api/requests/")))
+        elif path.startswith("/api/conversations/"):
+            self._inspect(lambda: inspect_conversation(path.removeprefix("/api/conversations/")))
         elif path.startswith("/assets/"):
             asset = path.removeprefix("/")
             content_type = guess_type(asset)[0] or "application/octet-stream"
@@ -98,6 +114,12 @@ class RuntimeHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _inspect(self, loader: Any) -> None:
+        try:
+            self._send_json(HTTPStatus.OK, loader())
+        except KeyError:
+            self._send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
     def log_message(self, _format: str, *_args: object) -> None:
         """Keep the demo output focused on explicit validation messages."""
