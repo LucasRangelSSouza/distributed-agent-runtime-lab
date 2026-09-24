@@ -19,6 +19,7 @@ from runtime_lab.runtime import Runtime
 STATIC_ROOT = Path(__file__).with_name("static")
 RUNTIME = Runtime()
 WORKERS = ["worker-amber", "worker-slate"]
+MAX_MESSAGE_LENGTH = 2_000
 
 
 def execute(request_id: str, message: str) -> dict[str, object]:
@@ -58,10 +59,10 @@ class RuntimeHandler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length))
             message = str(payload.get("message", "")).strip()
             request_id = str(payload.get("request_id") or uuid4())
-            if not message:
-                raise ValueError("message is required")
+            if not message or len(message) > MAX_MESSAGE_LENGTH:
+                raise ValueError("message must contain 1 to 2000 characters")
         except (ValueError, json.JSONDecodeError):
-            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "message is required"})
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "message must contain 1 to 2000 characters"})
             return
         self._send_json(HTTPStatus.OK, execute(request_id, message))
 

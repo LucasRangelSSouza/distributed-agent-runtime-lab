@@ -1,4 +1,5 @@
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 
 from runtime_lab.runtime import Runtime
 from runtime_lab import web
@@ -35,6 +36,21 @@ class RuntimeTests(unittest.TestCase):
         self.assertFalse(first["cache_hit"])
         self.assertTrue(replay["cache_hit"])
         self.assertEqual(replay["response"], "Worker received: first message")
+
+    def test_same_request_is_handled_once_under_concurrency(self):
+        runtime = Runtime()
+        calls = 0
+
+        def handler(_: str) -> str:
+            nonlocal calls
+            calls += 1
+            return "answer"
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            states = list(executor.map(lambda _: runtime.process("same", ["worker-a"], handler), range(8)))
+        self.assertEqual(calls, 1)
+        self.assertTrue(all(state.response == "answer" for state in states))
+        self.assertEqual(runtime.requests["same"].attempts, 1)
 
 
 if __name__ == "__main__":
