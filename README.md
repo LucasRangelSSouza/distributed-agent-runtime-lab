@@ -1,5 +1,7 @@
 # Distributed agent runtime lab
 
+![Social preview for the Distributed agent runtime lab](docs/assets/social-preview.png)
+
 A local-first reference for an idempotent agent runtime. It ships a React test chat, a deterministic runtime, and a Compose profile with Redis. Repeated request IDs return the first completed result.
 
 ```mermaid
