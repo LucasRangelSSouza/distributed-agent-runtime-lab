@@ -48,7 +48,7 @@ The Docker Compose file provides a Redis service and a runtime container contrac
 
 ## Cloud and Kubernetes boundary
 
-Docker Compose passed locally on 2026-09-24. This workspace has no Kubernetes context or cloud account, so the project has no cluster evidence and makes no claim about an active cloud cluster. A cloud exercise requires a reviewed AWS or GCP plan, an immutable image digest, secret delivery outside Git, and a multi-worker resilience run in the selected environment.
+Docker Compose passed locally on 2026-09-24. `k8s/local-kind.yaml` supplies a two-worker `kind` blueprint with Redis, probes, and resource limits; schema validation passed for all six resources. The local control-plane failed during its bootstrap on this host, so the project has no cluster execution evidence and makes no claim about an active cloud cluster. A cloud exercise requires a reviewed AWS or GCP plan, an immutable image digest, secret delivery outside Git, and a multi-worker resilience run in the selected environment.
 
 ## Article draft
 
