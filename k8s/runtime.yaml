@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-runtime
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: agent-runtime}
+  template:
+    metadata:
+      labels: {app: agent-runtime}
+    spec:
+      containers:
+        - name: runtime
+          image: ghcr.io/example/agent-runtime:replace-with-immutable-tag
+          env:
+            - name: REDIS_URL
+              value: redis://redis:6379/0
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-runtime
+spec:
+  selector: {app: agent-runtime}
+  ports: [{port: 8080, targetPort: 8080}]
