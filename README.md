@@ -23,7 +23,7 @@ terraform -chdir=infra\terraform validate
 kubectl apply --dry-run=client --validate=false -f k8s\runtime.yaml
 ```
 
-The Docker Compose file provides a Redis service and a runtime container contract. The Kubernetes manifest starts two worker replicas. Terraform holds a portable provider-selection contract; a deployer supplies the provider module, credentials, networking, and immutable image tag.
+The Docker Compose file provides a Redis service and a runtime container contract. The Kubernetes manifest starts two worker replicas. The GKE Terraform configuration provisions a regional cluster and worker pool; a deployer supplies credentials, project ID, networking review, and immutable image tag. Read [the GKE deployment contract](docs/gke-deployment.md) before planning cloud resources.
 
 ## Operational boundary
 

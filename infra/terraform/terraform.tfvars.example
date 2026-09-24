@@ -1,0 +1,5 @@
+project_id          = "replace-with-your-project-id"
+region              = "us-central1"
+cluster_name        = "distributed-agent-runtime"
+worker_node_count   = 2
+worker_machine_type = "e2-standard-2"
