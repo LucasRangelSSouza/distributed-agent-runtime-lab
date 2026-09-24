@@ -78,6 +78,10 @@ Docker Compose passed locally on 2026-09-24. A worker interruption and pending-e
 
 The Helm chart at `helm/agent-runtime` separates gateway, worker, and Redis workloads. It includes probes, resource limits, a worker disruption budget, a restrictive demonstration NetworkPolicy, a CPU-based HPA, and an optional Redis Streams KEDA trigger. KEDA stays disabled by default because its CRD and operator are not part of a fresh Kubernetes cluster. Supply an existing Secret name only through `secrets.existingSecret`; the chart never generates credentials.
 
+## Delivery boundary
+
+CI verifies source, local interface behavior, container construction, Helm, manifests, and Terraform syntax. A later, unused `v*` tag triggers the [release delivery workflow](docs/release-delivery.md), which publishes a GHCR image with an SBOM and provenance. The existing `v0.1.0` source release predates that workflow and has no corresponding container artifact. No release workflow provisions cloud resources.
+
 ```powershell
 docker run --rm -v "${PWD}:/work:ro" alpine/helm:3.16.4 lint /work/helm/agent-runtime
 docker run --rm -v "${PWD}:/work:ro" alpine/helm:3.16.4 template runtime-lab /work/helm/agent-runtime
