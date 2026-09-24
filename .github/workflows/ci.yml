@@ -18,6 +18,22 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e .
       - run: python -m unittest discover -s tests -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm --prefix frontend ci
+      - run: npm --prefix frontend run build
+      - run: docker build --tag runtime-lab-ci .
+      - run: docker run --rm -v "$PWD:/work:ro" alpine/helm:3.16.4 lint /work/helm/agent-runtime
+      - run: docker run --rm -v "$PWD:/work:ro" alpine/helm:3.16.4 template runtime-lab /work/helm/agent-runtime | docker run -i --rm ghcr.io/yannh/kubeconform:latest -strict -summary
+      - run: docker run --rm -v "$PWD:/work:ro" ghcr.io/yannh/kubeconform:latest -strict -summary /work/k8s/local-kind.yaml /work/k8s/runtime.yaml
       - uses: hashicorp/setup-terraform@v3
       - run: terraform -chdir=infra/terraform init -backend=false
+      - run: terraform -chdir=infra/terraform fmt -check -recursive
       - run: terraform -chdir=infra/terraform validate
+      - name: Reject public-context and credential markers
+        run: |
+          ! rg -n -i "mindlab|mente inovadora|mi-prd|bigquery|kaggle.{0,40}(token|api|username)|ghp_|AKIA" \
+            --glob '!frontend/node_modules/**' --glob '!*.pyc' .
