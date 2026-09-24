@@ -1,0 +1,7 @@
+project_id = "replace-with-your-project-id"
+
+# Choose non-overlapping CIDRs permitted by the organization network policy.
+clusters = {
+  primary   = { region = "us-central1", cidr = "10.10.0.0/20" }
+  secondary = { region = "us-east1", cidr = "10.20.0.0/20" }
+}
