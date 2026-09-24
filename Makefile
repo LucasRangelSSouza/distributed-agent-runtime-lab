@@ -3,6 +3,7 @@
 check:
 	python -m unittest discover -s tests -v
 	npm --prefix frontend run build
+	npm --prefix frontend run test:e2e
 	docker compose config --quiet
 	terraform -chdir=infra/terraform fmt -check -recursive
 	terraform -chdir=infra/terraform validate
