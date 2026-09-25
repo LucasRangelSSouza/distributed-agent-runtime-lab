@@ -165,6 +165,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      # Building the education corpus from the full release (5,568 documents)
+      # took about 10s on an unloaded Docker Desktop host; a shared,
+      # I/O-constrained host needs more headroom before startup failures
+      # count against `retries`.
+      start_period: 120s
     deploy:
       resources:
         limits: {cpus: "0.50", memory: 256M, pids: 256}
