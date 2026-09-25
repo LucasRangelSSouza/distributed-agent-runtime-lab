@@ -14,3 +14,5 @@ frontend/playwright-report/
 deploy/public-demo/certs/
 deploy/public-demo/analytics/release/*
 !deploy/public-demo/analytics/release/.gitkeep
+deploy/public-demo/data/education-release/*
+!deploy/public-demo/data/education-release/.gitkeep

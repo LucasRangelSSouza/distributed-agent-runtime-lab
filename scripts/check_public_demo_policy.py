@@ -52,6 +52,7 @@ BIND_ALLOWLIST = {
     "analytics/init",
     "analytics/fixture",
     "analytics/release",
+    "data/education-release",
     "metabase/seed_metabase.py",
 }
 ALLOWED_PORTS = {"nginx": {("80", 8080), ("443", 8443)}}

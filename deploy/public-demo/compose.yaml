@@ -147,21 +147,27 @@ services:
     labels:
       public-demo.image-source: ${RAG_IMAGE_SOURCE:?set in versions.env}
     user: "10001:10001"
+    # Real ai-platform-rag-observability image: the education corpus adapter
+    # verifies the release manifest hash itself before building the corpus,
+    # on top of the maintainer-side check in public_demo_load_release.py.
+    command: ["serve", "--host", "0.0.0.0", "--port", "${RAG_PORT:?set in versions.env}", "--education-dir", "/data/education", "--release", "v1"]
     environment:
-      RAG_FIXTURE_PORT: ${RAG_PORT:?set in versions.env}
       HTTP_PROXY: http://egress-proxy:3128
       HTTPS_PROXY: http://egress-proxy:3128
       NO_PROXY: localhost,127.0.0.1
+    volumes:
+      - {type: bind, source: "${EDUCATION_RELEASE_DIR:?set in .env}", target: /data/education, read_only: true}
     tmpfs: ["/tmp:mode=1777"]
     networks: [app, egress]
     healthcheck:
-      test: ["CMD", "python", "-c", "import os; from urllib.request import urlopen; urlopen('http://127.0.0.1:' + os.environ.get('RAG_FIXTURE_PORT', '8000') + '/healthz', timeout=3)"]
+      # ${RAG_PORT} is resolved by Compose itself at parse time, same as in `command`.
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:${RAG_PORT:?set in versions.env}/healthz', timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 5
     deploy:
       resources:
-        limits: {cpus: "0.50", memory: 192M, pids: 256}
+        limits: {cpus: "0.50", memory: 256M, pids: 256}
 
   egress-proxy:
     <<: *hardened

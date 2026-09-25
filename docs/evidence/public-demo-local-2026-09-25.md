@@ -34,7 +34,7 @@ python scripts/check_public_demo_policy.py --strict-release
 
 Local mode: `PASS (13 services)`. No privileged mode, host networking, PID/IPC namespace, Docker-socket mount, unlisted host-path bind, root user, or missing `cap_drop`/`no-new-privileges`/read-only root/memory limit/restart policy/health check.
 
-Strict-release mode: `FAIL` on the four services that are still local builds (`airflow`, `frontend`, `worker`, `rag-gateway`) because they lack a registry digest — the expected state until a tagged release publishes GHCR images with digests (see the compatibility matrix).
+Strict-release mode (first pass, before the GHCR publish below): `FAIL` on the four services that were still local builds (`airflow`, `frontend`, `worker`, `rag-gateway`) because they lacked a registry digest. After the GHCR publish, only `airflow` still fails strict-release — see the update at the end of this file.
 
 ## Egress isolation
 
@@ -96,3 +96,17 @@ Restarting a public application container returns it to `healthy` without host i
 
 - The multi-cluster / VPS profile: out of scope until a provider, domain, and management-access method are supplied (spec section 14.2).
 - A load test against the public-demo profile specifically (the Compose-only benchmark in `docs/evidence/compose-benchmark-2026-09-24.md` used the plain two-worker profile, not this hardened one).
+
+## Update: real GHCR images (same day, later run)
+
+Both `ai-platform-rag-observability` (tag `0.2.1`) and this repo (tag `v0.2.0`) publish an immutable image to GHCR on a signed tag as of this run (`.github/workflows/ci.yml`'s `release` job). `versions.env` now pins both by tag+digest instead of a local build; only `airflow` remains a local build (its Dockerfile bakes in DAGs fetched from two other repos at pinned commits, not published as its own image).
+
+```powershell
+python scripts/public_demo_env.py
+python scripts/public_demo_env.py --set EDUCATION_RELEASE_DIR=./data/education-release
+# copy an extracted lucasrangelss/brazil-education-data-lake v1 into deploy/public-demo/data/education-release/
+bash scripts/public_demo.sh up -d --build
+curl -sk -X POST https://localhost/v1/answer -H "Content-Type: application/json" -d '{"question":"What was the population of Acrelandia in 2023?"}'
+```
+
+The real `rag-gateway` image, pulled from GHCR by digest, answered correctly through the hardened nginx edge: *"In 2023, Acrelândia had a population of 13,353. [municipality-1200013#c004]"*, with a citation carrying the dataset slug, version, and manifest hash. `python scripts/check_public_demo_policy.py --strict-release` reports exactly one finding (`airflow`, expected). The fixture stand-in (`runtime_lab/rag_fixture.py`) is no longer used by this profile; it remains in the repo only as a documented, independently tested reference for the API contract.
