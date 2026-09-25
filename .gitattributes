@@ -1,0 +1,3 @@
+# Scripts and configs mounted into Linux containers must keep LF endings.
+*.sh text eol=lf
+deploy/public-demo/** text eol=lf

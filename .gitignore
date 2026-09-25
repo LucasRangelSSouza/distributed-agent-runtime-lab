@@ -11,3 +11,6 @@ frontend/dist/
 frontend/*.tsbuildinfo
 frontend/test-results/
 frontend/playwright-report/
+deploy/public-demo/certs/
+deploy/public-demo/analytics/release/*
+!deploy/public-demo/analytics/release/.gitkeep

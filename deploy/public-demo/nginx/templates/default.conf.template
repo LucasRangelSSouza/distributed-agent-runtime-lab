@@ -1,0 +1,133 @@
+# Rendered at container start by the nginx image's envsubst step. Only
+# variables that match NGINX_ENVSUBST_FILTER (^PUBLIC_) are substituted.
+#
+# Routing policy (deny by default):
+#   /                      test-chat page (runtime gateway container)
+#   /assets/               test-chat static bundle
+#   /healthz               test-chat connectivity probe
+#   /api/messages          test-chat submit endpoint (POST only)
+#   /rag/                  static RAG demo page with disclosure (served here)
+#   /v1/answer             RAG gateway (POST only)
+#   /public/dashboard/<approved uuid>, /api/public/dashboard/<approved uuid>,
+#   /app/, /api/session/properties
+#                          the one approved Metabase public dashboard
+#   everything else        404; known Metabase admin/editor routes return 403
+# Airflow has no upstream here and is not attached to any network nginx joins.
+
+# Upstreams resolve per request through Docker's embedded DNS, so the edge
+# starts (and keeps serving the other routes) while one backend is down.
+resolver 127.0.0.11 valid=10s ipv6=off;
+
+server {
+    listen 8080 default_server;
+    server_name _;
+
+    location = /nginx-health {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 8443 ssl default_server;
+    http2 on;
+    server_name _;
+
+    ssl_certificate /etc/nginx/certs/tls.crt;
+    ssl_certificate_key /etc/nginx/certs/tls.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:public_tls:1m;
+    ssl_session_tickets off;
+
+    limit_req zone=public_edge burst=40 nodelay;
+
+    # add_header in a location replaces these, so locations that add a CSP
+    # include the same snippet again.
+    include /etc/nginx/snippets/security-headers.conf;
+
+    # Upstream credentials and sessions never cross the public edge.
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Authorization "";
+    proxy_set_header Cookie "";
+    proxy_hide_header Set-Cookie;
+    proxy_hide_header X-Powered-By;
+    proxy_http_version 1.1;
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 30s;
+
+    set $chat_frontend http://frontend:8080;
+    set $rag_gateway http://rag-gateway:${PUBLIC_RAG_PORT};
+    set $metabase_public http://metabase:3000;
+
+    # --- test chat ---------------------------------------------------------
+    location = / {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Content-Security-Policy "default-src 'self'; frame-ancestors 'none'" always;
+        proxy_pass $chat_frontend;
+    }
+    location ^~ /assets/ {
+        limit_except GET HEAD { deny all; }
+        proxy_pass $chat_frontend;
+    }
+    location = /healthz {
+        limit_except GET HEAD { deny all; }
+        proxy_pass $chat_frontend;
+    }
+    location = /api/messages {
+        limit_except POST { deny all; }
+        limit_req zone=public_write burst=5 nodelay;
+        proxy_pass $chat_frontend;
+    }
+
+    # --- RAG demo ----------------------------------------------------------
+    location ^~ /rag/ {
+        limit_except GET HEAD { deny all; }
+        root /usr/share/nginx/html;
+        index index.html;
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Content-Security-Policy "default-src 'self'; frame-ancestors 'none'" always;
+        add_header Cache-Control "no-store" always;
+    }
+    location = /v1/answer {
+        limit_except POST { deny all; }
+        limit_req zone=public_write burst=5 nodelay;
+        proxy_pass $rag_gateway;
+    }
+
+    # --- approved Metabase public dashboard --------------------------------
+    location ^~ /public/dashboard/${PUBLIC_DASHBOARD_UUID} {
+        limit_except GET HEAD { deny all; }
+        proxy_pass $metabase_public;
+    }
+    location ^~ /api/public/dashboard/${PUBLIC_DASHBOARD_UUID} {
+        limit_except GET HEAD { deny all; }
+        proxy_pass $metabase_public;
+    }
+    location ^~ /app/ {
+        limit_except GET HEAD { deny all; }
+        proxy_pass $metabase_public;
+    }
+    location = /api/session/properties {
+        limit_except GET HEAD { deny all; }
+        proxy_pass $metabase_public;
+    }
+
+    # --- explicit denials (documented intent; the default below is also 404)
+    location ~* ^/(admin|question|model|metric|collection|dashboard|browse|reference|auth|setup|embed|public/question|public/card)(/|$) {
+        return 403;
+    }
+    location ~* ^/api/(database|card|dataset|table|field|user|setup|session|setting|native-query-snippet|collection|dashboard|search|activity|permissions|embed|public/card|public/question|public/oembed)(/|$) {
+        return 403;
+    }
+
+    location / {
+        return 404;
+    }
+}

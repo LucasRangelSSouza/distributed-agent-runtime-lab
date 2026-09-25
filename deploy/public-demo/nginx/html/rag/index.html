@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RAG demo</title>
+  <link rel="stylesheet" href="/rag/rag.css">
+</head>
+<body>
+  <main>
+    <h1>Education finance RAG demo</h1>
+    <section class="notice" aria-label="Before you ask">
+      <p><strong>This is a demonstration.</strong> Answers come only from a small approved corpus that describes a synthetic education finance view. Every answer lists the dataset and version it cites. When the corpus has no evidence, the service says so instead of guessing.</p>
+      <p><strong>Do not enter personal, confidential, regulated, or proprietary information.</strong> The edge does not log request bodies. The fixture gateway does not store or log questions; its trace ID is a hash. No model provider is connected in this profile.</p>
+    </section>
+    <form id="ask">
+      <label for="question">Question</label>
+      <textarea id="question" maxlength="1000" required placeholder="Which share of tax revenue goes to education maintenance and development?"></textarea>
+      <button type="submit">Ask</button>
+    </form>
+    <section id="result" aria-live="polite"></section>
+  </main>
+  <script src="/rag/rag.js"></script>
+</body>
+</html>

@@ -82,6 +82,23 @@ The Helm chart at `helm/agent-runtime` separates gateway, worker, and Redis work
 
 The [dated Compose benchmark](docs/evidence/compose-benchmark-2026-09-24.md) sent 48 unique requests at concurrency six through the local gateway and two Redis Streams workers. It recorded 61.89 requests/s, p50 latency of 56.88 ms, p95 latency of 147.95 ms, zero errors, and zero queue lag at the end of that run. Those figures describe one deterministic-stub workload on one Docker Desktop host. They are not a production capacity claim.
 
+## Public-demo profile
+
+`deploy/public-demo/` is a separate, opt-in Compose profile that composes this repository's own runtime with pinned artifacts from `brazil-public-data-map` (the real, published education Kaggle release) and `education-finance-mlops`/`brazil-public-data-map` (two paused example Airflow DAGs). It is a deployment demonstration, not a production SaaS: nginx is the only published service, every other service sits on an internal network, and a dedicated egress proxy is the only route out, restricted to an allowlist that denies localhost, private ranges, and cloud-metadata addresses.
+
+```powershell
+python scripts/public_demo_env.py
+bash scripts/public_demo_cert.sh
+bash scripts/public_demo_load_release.py --release-dir <extracted lucasrangelss/brazil-education-data-lake v1>
+bash scripts/public_demo.sh up -d --build
+bash scripts/public_demo.sh --profile seed run --rm metabase-seed
+python scripts/check_public_demo_policy.py --strict-release
+```
+
+The [2026-09-25 acceptance run](docs/evidence/public-demo-local-2026-09-25.md) recorded: only ports 80/443 reachable; the internal network cannot reach the internet or cloud metadata while the egress proxy reaches only its allowlist; Metabase serves one approved public dashboard over the real, hash-verified 27,830-row education release and blocks `/admin`, `/question`, and the API routes; both mounted Airflow DAGs load paused with no schedule reachable through nginx; a restarted application container returns to healthy without host intervention. The [compatibility matrix](deploy/public-demo/compatibility-matrix.md) records what is pinned by digest versus still a local build (the RAG gateway is currently a documented fixture stand-in, not the real `ai-platform-rag-observability` image, which has no registry publish yet). The [runbook](docs/public-demo-runbook.md) covers image updates, rollback, secret rotation, public-link revocation, backup/restore, and teardown.
+
+A real VPS, domain, and DNS deployment does not exist and is out of scope here (spec section 14.2): it requires a provider, a domain, and a management-access method, decided in a separate private infrastructure repository after its own host-exposure review.
+
 ## Delivery boundary
 
 CI verifies source, local interface behavior, container construction, Helm, manifests, and Terraform syntax. A later, unused `v*` tag triggers the [release delivery workflow](docs/release-delivery.md), which publishes a GHCR image with an SBOM and provenance. The existing `v0.1.0` source release predates that workflow and has no corresponding container artifact. No release workflow provisions cloud resources.

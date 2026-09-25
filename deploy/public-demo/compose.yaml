@@ -1,0 +1,382 @@
+# Opt-in public-demo profile (spec 12.7). Local validation only in this
+# repository; the real host, DNS, TLS, and deployment live in a separate
+# private infrastructure repository.
+#
+# Run through the wrapper so both env files load:
+#   scripts/public_demo.sh up -d
+#
+# Networks
+#   edge      published ports; nginx only
+#   app       internal: edge-facing application services
+#   data      internal: Metabase, its metadata DB, the analytics DB
+#   ops       internal: Airflow and its metadata DB (nginx is NOT attached)
+#   egress    internal: services that may call out, plus the egress proxy
+#   outbound  the egress proxy only
+#
+# Read-only config bind mounts (the only host paths; see
+# scripts/check_public_demo_policy.py for the allowlist):
+#   ./nginx/nginx.conf ./nginx/templates ./nginx/snippets ./nginx/html ./certs
+#   ./egress/squid.conf ./analytics/init ./analytics/fixture ./analytics/release
+#   ./metabase/seed_metabase.py
+# Airflow DAGs are baked into the local Airflow image from pinned commits.
+#
+# Optional components not composed yet (documented placeholders):
+#   9Router (model gateway) and Langfuse (observability). See
+#   compatibility-matrix.md; neither needs a credential in this profile.
+
+name: public-demo
+
+x-hardened: &hardened
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  logging:
+    driver: local
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+x-postgres-health: &postgres-health
+  interval: 5s
+  timeout: 3s
+  retries: 20
+
+services:
+  nginx:
+    <<: *hardened
+    image: ${NGINX_IMAGE:?set in versions.env}
+    user: "101:101"
+    ports:
+      - "80:8080"
+      - "443:8443"
+    environment:
+      NGINX_ENVSUBST_FILTER: "^PUBLIC_"
+      NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx/conf.d
+      PUBLIC_DASHBOARD_UUID: ${PUBLIC_DASHBOARD_UUID:?set in .env}
+      PUBLIC_RAG_PORT: ${RAG_PORT:?set in versions.env}
+    volumes:
+      - {type: bind, source: ./nginx/nginx.conf, target: /etc/nginx/nginx.conf, read_only: true}
+      - {type: bind, source: ./nginx/templates, target: /etc/nginx/templates, read_only: true}
+      - {type: bind, source: ./nginx/snippets, target: /etc/nginx/snippets, read_only: true}
+      - {type: bind, source: ./nginx/html, target: /usr/share/nginx/html, read_only: true}
+      - {type: bind, source: ./certs, target: /etc/nginx/certs, read_only: true}
+    tmpfs:
+      - /tmp:uid=101,gid=101,mode=0700
+      - /var/cache/nginx:uid=101,gid=101,mode=0700
+      - /etc/nginx/conf.d:uid=101,gid=101,mode=0700
+    networks: [edge, app]
+    depends_on:
+      frontend: {condition: service_healthy}
+      rag-gateway: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/nginx-health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits: {cpus: "0.50", memory: 128M, pids: 256}
+
+  frontend:
+    <<: *hardened
+    image: ${RUNTIME_IMAGE:?set in versions.env}
+    labels:
+      public-demo.image-source: ${RUNTIME_IMAGE_SOURCE:?set in versions.env}
+    user: "10001:10001"
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set in .env}@redis:6379/0
+    tmpfs: ["/tmp:mode=1777"]
+    networks: [app]
+    depends_on:
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits: {cpus: "0.50", memory: 192M, pids: 256}
+
+  worker:
+    <<: *hardened
+    image: ${RUNTIME_IMAGE:?set in versions.env}
+    labels:
+      public-demo.image-source: ${RUNTIME_IMAGE_SOURCE:?set in versions.env}
+    user: "10001:10001"
+    command: ["python", "-m", "runtime_lab.worker"]
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set in .env}@redis:6379/0
+    tmpfs: ["/tmp:mode=1777"]
+    networks: [app]
+    depends_on:
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, redis; redis.Redis.from_url(os.environ['REDIS_URL']).ping()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits: {cpus: "0.50", memory: 192M, pids: 256}
+
+  redis:
+    <<: *hardened
+    image: ${REDIS_IMAGE:?set in versions.env}
+    user: "999:1000"
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --appendonly yes --protected-mode yes --maxmemory 64mb --maxmemory-policy noeviction"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set in .env}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?set in .env}
+    volumes:
+      - redis-data:/data
+    networks: [app]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    deploy:
+      resources:
+        limits: {cpus: "0.50", memory: 128M, pids: 256}
+
+  rag-gateway:
+    <<: *hardened
+    image: ${RAG_IMAGE:?set in versions.env}
+    labels:
+      public-demo.image-source: ${RAG_IMAGE_SOURCE:?set in versions.env}
+    user: "10001:10001"
+    environment:
+      RAG_FIXTURE_PORT: ${RAG_PORT:?set in versions.env}
+      HTTP_PROXY: http://egress-proxy:3128
+      HTTPS_PROXY: http://egress-proxy:3128
+      NO_PROXY: localhost,127.0.0.1
+    tmpfs: ["/tmp:mode=1777"]
+    networks: [app, egress]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; from urllib.request import urlopen; urlopen('http://127.0.0.1:' + os.environ.get('RAG_FIXTURE_PORT', '8000') + '/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits: {cpus: "0.50", memory: 192M, pids: 256}
+
+  egress-proxy:
+    <<: *hardened
+    image: ${SQUID_IMAGE:?set in versions.env}
+    user: "13:13"
+    entrypoint: ["/usr/sbin/squid", "-N", "-f", "/etc/squid/squid.conf"]
+    command: []
+    volumes:
+      - {type: bind, source: ./egress/squid.conf, target: /etc/squid/squid.conf, read_only: true}
+    tmpfs:
+      - /run/squid:uid=13,gid=13,mode=0700
+      - /var/spool/squid:uid=13,gid=13,mode=0700
+      - /var/log/squid:uid=13,gid=13,mode=0700
+      - /tmp:mode=1777
+    networks: [egress, outbound]
+    healthcheck:
+      test: ["CMD", "/usr/sbin/squid", "-k", "check", "-f", "/etc/squid/squid.conf"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits: {cpus: "0.50", memory: 128M, pids: 256}
+
+  metabase-db:
+    <<: *hardened
+    image: ${POSTGRES_IMAGE:?set in versions.env}
+    user: "70:70"
+    environment:
+      POSTGRES_DB: metabase
+      POSTGRES_USER: metabase
+      POSTGRES_PASSWORD: ${METABASE_DB_PASSWORD:?set in .env}
+    volumes:
+      - metabase-db-data:/var/lib/postgresql/data
+    tmpfs:
+      - /var/run/postgresql:uid=70,gid=70,mode=0775
+      - /tmp:mode=1777
+    networks: [data]
+    healthcheck:
+      <<: *postgres-health
+      test: ["CMD", "pg_isready", "-U", "metabase", "-d", "metabase"]
+    deploy:
+      resources:
+        limits: {cpus: "0.50", memory: 256M, pids: 256}
+
+  analytics-db:
+    <<: *hardened
+    image: ${POSTGRES_IMAGE:?set in versions.env}
+    user: "70:70"
+    environment:
+      POSTGRES_DB: analytics
+      POSTGRES_USER: analytics_owner
+      POSTGRES_PASSWORD: ${ANALYTICS_OWNER_PASSWORD:?set in .env}
+      ANALYTICS_READER_PASSWORD: ${ANALYTICS_READER_PASSWORD:?set in .env}
+      ANALYTICS_SOURCE: ${ANALYTICS_SOURCE:?set in versions.env}
+    volumes:
+      - analytics-db-data:/var/lib/postgresql/data
+      - {type: bind, source: ./analytics/init, target: /docker-entrypoint-initdb.d, read_only: true}
+      - {type: bind, source: ./analytics/fixture, target: /fixture, read_only: true}
+      - {type: bind, source: ./analytics/release, target: /release, read_only: true}
+    tmpfs:
+      - /var/run/postgresql:uid=70,gid=70,mode=0775
+      - /tmp:mode=1777
+    networks: [data]
+    healthcheck:
+      <<: *postgres-health
+      test: ["CMD", "pg_isready", "-U", "analytics_owner", "-d", "analytics"]
+    deploy:
+      resources:
+        limits: {cpus: "0.50", memory: 256M, pids: 256}
+
+  metabase:
+    <<: *hardened
+    image: ${METABASE_IMAGE:?set in versions.env}
+    user: "2000:2000"
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_HOST: metabase-db
+      MB_DB_PORT: "5432"
+      MB_DB_DBNAME: metabase
+      MB_DB_USER: metabase
+      MB_DB_PASS: ${METABASE_DB_PASSWORD:?set in .env}
+      MB_ENCRYPTION_SECRET_KEY: ${METABASE_ENCRYPTION_KEY:?set in .env}
+      MB_SITE_URL: ${PUBLIC_BASE_URL:?set in .env}
+      MB_ENABLE_PUBLIC_SHARING: "true"
+      MB_ANON_TRACKING_ENABLED: "false"
+      MB_CHECK_FOR_UPDATES: "false"
+      MB_ENABLE_XRAYS: "false"
+      MB_LOAD_SAMPLE_CONTENT: "false"
+      MB_PLUGINS_DIR: /plugins
+      JAVA_OPTS: "-Xmx768m -Djava.io.tmpdir=/tmp"
+    tmpfs:
+      - /plugins:uid=2000,gid=2000,mode=0700
+      - /tmp:uid=2000,gid=2000,mode=0700
+    networks: [app, data]
+    depends_on:
+      metabase-db: {condition: service_healthy}
+      analytics-db: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 240s
+    deploy:
+      resources:
+        limits: {cpus: "1.50", memory: 1536M, pids: 256}
+
+  metabase-seed:
+    <<: *hardened
+    profiles: [seed]
+    restart: "no"
+    image: ${PYTHON_IMAGE:?set in versions.env}
+    user: "65534:65534"
+    command: ["python", "/seed/seed_metabase.py"]
+    environment:
+      MB_URL: http://metabase:3000
+      METABASE_ADMIN_EMAIL: ${METABASE_ADMIN_EMAIL:?set in .env}
+      METABASE_ADMIN_PASSWORD: ${METABASE_ADMIN_PASSWORD:?set in .env}
+      ANALYTICS_HOST: analytics-db
+      ANALYTICS_DB: analytics
+      ANALYTICS_READER_USER: metabase_reader
+      ANALYTICS_READER_PASSWORD: ${ANALYTICS_READER_PASSWORD:?set in .env}
+      ANALYTICS_SOURCE: ${ANALYTICS_SOURCE:-fixture}
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - {type: bind, source: ./metabase/seed_metabase.py, target: /seed/seed_metabase.py, read_only: true}
+    networks: [data]
+    deploy:
+      resources:
+        limits: {cpus: "0.25", memory: 64M, pids: 256}
+
+  airflow-db:
+    <<: *hardened
+    image: ${POSTGRES_IMAGE:?set in versions.env}
+    user: "70:70"
+    environment:
+      POSTGRES_DB: airflow
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD:?set in .env}
+    volumes:
+      - airflow-db-data:/var/lib/postgresql/data
+    tmpfs:
+      - /var/run/postgresql:uid=70,gid=70,mode=0775
+      - /tmp:mode=1777
+    networks: [ops]
+    healthcheck:
+      <<: *postgres-health
+      test: ["CMD", "pg_isready", "-U", "airflow", "-d", "airflow"]
+    deploy:
+      resources:
+        limits: {cpus: "0.50", memory: 256M, pids: 256}
+
+  airflow:
+    <<: *hardened
+    image: ${AIRFLOW_IMAGE:?set in versions.env}
+    labels:
+      public-demo.image-source: ${AIRFLOW_IMAGE_SOURCE:?set in versions.env}
+    user: "50000:0"
+    command: ["standalone"]
+    environment:
+      AIRFLOW_HOME: /opt/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "True"
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?set in .env}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD:?set in .env}@airflow-db:5432/airflow
+      AIRFLOW__API__SECRET_KEY: ${AIRFLOW_API_SECRET_KEY:?set in .env}
+      AIRFLOW__API__EXPOSE_CONFIG: "False"
+      AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?set in .env}
+      AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "True"
+      AIRFLOW__LOGGING__LOGGING_LEVEL: WARNING
+    volumes:
+      - airflow-logs:/opt/airflow/logs
+    tmpfs:
+      - /opt/airflow:uid=50000,gid=0,mode=0770
+      - /home/airflow/.cache:uid=50000,gid=0,mode=0700
+      - /tmp:mode=1777
+    networks: [ops]
+    depends_on:
+      airflow-db: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/v2/monitor/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 240s
+    deploy:
+      resources:
+        limits: {cpus: "1.50", memory: 2048M, pids: 256}
+
+  # One-shot probe for the acceptance tests: sits on the internal app and
+  # egress networks, has no outbound route, and exits after one command.
+  check:
+    <<: *hardened
+    profiles: [checks]
+    restart: "no"
+    image: ${CURL_IMAGE:?set in versions.env}
+    user: "100:101"
+    networks: [app, egress]
+    deploy:
+      resources:
+        limits: {cpus: "0.25", memory: 32M, pids: 256}
+
+networks:
+  edge: {}
+  app: {internal: true}
+  data: {internal: true}
+  ops: {internal: true}
+  egress: {internal: true}
+  outbound: {}
+
+volumes:
+  redis-data: {}
+  metabase-db-data: {}
+  analytics-db-data: {}
+  airflow-db-data: {}
+  airflow-logs: {}
