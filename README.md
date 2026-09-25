@@ -78,6 +78,10 @@ Docker Compose passed locally on 2026-09-24. A worker interruption and pending-e
 
 The Helm chart at `helm/agent-runtime` separates gateway, worker, and Redis workloads. It includes probes, resource limits, a worker disruption budget, a restrictive demonstration NetworkPolicy, a CPU-based HPA, and an optional Redis Streams KEDA trigger. KEDA stays disabled by default because its CRD and operator are not part of a fresh Kubernetes cluster. Supply an existing Secret name only through `secrets.existingSecret`; the chart never generates credentials.
 
+## Local benchmark
+
+The [dated Compose benchmark](docs/evidence/compose-benchmark-2026-09-24.md) sent 48 unique requests at concurrency six through the local gateway and two Redis Streams workers. It recorded 61.89 requests/s, p50 latency of 56.88 ms, p95 latency of 147.95 ms, zero errors, and zero queue lag at the end of that run. Those figures describe one deterministic-stub workload on one Docker Desktop host. They are not a production capacity claim.
+
 ## Delivery boundary
 
 CI verifies source, local interface behavior, container construction, Helm, manifests, and Terraform syntax. A later, unused `v*` tag triggers the [release delivery workflow](docs/release-delivery.md), which publishes a GHCR image with an SBOM and provenance. The existing `v0.1.0` source release predates that workflow and has no corresponding container artifact. No release workflow provisions cloud resources.
