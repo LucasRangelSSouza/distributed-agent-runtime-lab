@@ -108,6 +108,6 @@ docker run --rm -v "${PWD}:/work:ro" alpine/helm:3.16.4 lint /work/helm/agent-ru
 docker run --rm -v "${PWD}:/work:ro" alpine/helm:3.16.4 template runtime-lab /work/helm/agent-runtime
 ```
 
-## Article draft
+## Article
 
-[Idempotency before autoscaling an agent runtime](articles/idempotency-before-autoscaling.md) and its [claim-to-evidence map](articles/claim-map.md) are Markdown drafts for later manual publication.
+Article: [Idempotency before autoscaling an agent runtime](https://medium.com/@lucas.rangel_18599/3b12cd50ce4b) on Medium (source: [articles/idempotency-before-autoscaling.md](articles/idempotency-before-autoscaling.md)), with its [claim-to-evidence map](articles/claim-map.md).
