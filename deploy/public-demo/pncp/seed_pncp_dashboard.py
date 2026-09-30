@@ -75,6 +75,14 @@ def database_id(mb: Metabase) -> int:
 
 
 def wait_for_views(mb: Metabase, db_id: int, timeout_s: int = 240) -> dict[str, dict[str, Any]]:
+    def present() -> dict[str, dict[str, Any]] | None:
+        metadata = mb.call("GET", f"/api/database/{db_id}/metadata")
+        tables = {t["name"]: t for t in metadata.get("tables", []) if t.get("schema") == "approved"}
+        return {v: tables[v] for v in VIEWS} if all(v in tables and tables[v].get("fields") for v in VIEWS) else None
+
+    found = present()
+    if found:  # already synced: skip a sync that would open extra reader connections
+        return found
     mb.call("POST", f"/api/database/{db_id}/sync_schema", {}, expect_json=False)
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
