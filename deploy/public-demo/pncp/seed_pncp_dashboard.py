@@ -159,13 +159,13 @@ def main() -> None:
     if dash is None:
         dash = mb.call("POST", "/api/dashboard", {"name": DASHBOARD_NAME,
                                                   "description": f"Public PNCP release aggregates. Seed {SEED_VERSION}."})
-    dashcards = [{"id": -1, "card_id": None, "row": 0, "col": 0, "size_x": 24, "size_y": 2, "parameter_mappings": [],
+    dashcards = [{"id": -1, "card_id": None, "row": 0, "col": 0, "size_x": 24, "size_y": 3, "parameter_mappings": [],
                   "visualization_settings": {"virtual_card": {"name": None, "display": "text", "visualization_settings": {},
                                                                "dataset_query": {}, "archived": False},
                                              "text": banner_text()}}]
     order = [0, 1, 2, 3, 4, 5, 6, 7]  # facts, per-month, modality, categories, orgs, quantities, deadlines, value
-    placement = [(2, 0, 24, 4), (6, 0, 12, 7), (6, 12, 12, 7), (13, 0, 12, 8), (13, 12, 12, 8), (21, 0, 24, 9),
-                 (30, 0, 12, 7), (30, 12, 12, 7)]
+    placement = [(3, 0, 24, 6), (9, 0, 12, 7), (9, 12, 12, 7), (16, 0, 12, 8), (16, 12, 12, 8), (24, 0, 24, 9),
+                 (33, 0, 12, 7), (33, 12, 12, 7)]
     for i, (row, col, w, h) in zip(order, placement):
         dashcards.append({"id": -(i + 2), "card_id": card_ids[i], "row": row, "col": col, "size_x": w, "size_y": h,
                           "parameter_mappings": [], "visualization_settings": {}})
