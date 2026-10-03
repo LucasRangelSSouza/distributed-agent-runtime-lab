@@ -111,3 +111,9 @@ docker run --rm -v "${PWD}:/work:ro" alpine/helm:3.16.4 template runtime-lab /wo
 ## Article draft
 
 [Idempotency before autoscaling an agent runtime](articles/idempotency-before-autoscaling.md) and its [claim-to-evidence map](articles/claim-map.md) are Markdown drafts for later manual publication.
+
+<!-- articles:start -->
+## Articles
+
+- [Reliable job queues for AI agents with Redis Streams](https://lucas.rangeltech.net/articles/e2-redis-streams-agent-queues/)
+<!-- articles:end -->
